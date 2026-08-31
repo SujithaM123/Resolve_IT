@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ResolveIT - WebSocket chat tester</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--line:#dfe3e8;--ink:#1c2430;--mut:#6b7683;
+        --user:#2563eb;--sup:#059669;--warn:#b91c1c;--code:#f2f4f7}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.5 system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:var(--ink);color:#fff;padding:12px 18px}
+  header b{font-size:16px}
+  header span{color:#9fb0c4;margin-left:10px;font-size:12px}
+  .wrap{display:grid;grid-template-columns:320px 1fr;gap:14px;padding:14px;align-items:start}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px}
+  h2{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+  label{display:block;margin:8px 0 3px;font-size:12px;color:var(--mut)}
+  input,button{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit}
+  button{background:var(--ink);color:#fff;border:0;cursor:pointer;margin-top:10px}
+  button:disabled{background:#aab3bd;cursor:not-allowed}
+  button.alt{background:#475569}
+  .row{display:flex;gap:8px}
+  #status{margin-top:10px;padding:8px;border-radius:6px;background:var(--code);font-size:12px}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#c2c8d0;margin-right:6px}
+  .dot.on{background:#16a34a}
+  .dot.err{background:#dc2626}
+  #chat{height:52vh;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:12px;background:#fbfcfd}
+  .msg{margin-bottom:10px;padding:8px 10px;border-radius:8px;max-width:78%;border:1px solid var(--line);background:#fff}
+  .msg.me{margin-left:auto;border-color:#bfdbfe;background:#eff6ff}
+  .who{font-size:11px;font-weight:600;margin-bottom:2px}
+  .who.USER{color:var(--user)}
+  .who.SUPPORT{color:var(--sup)}
+  .meta{font-size:10px;color:var(--mut);margin-top:3px}
+  .sys{text-align:center;color:var(--mut);font-size:12px;margin:8px 0}
+  .sys.err{color:var(--warn);font-weight:600}
+  #log{height:150px;overflow-y:auto;background:#0f172a;color:#cbd5e1;font:11px/1.45 Consolas,monospace;
+       padding:10px;border-radius:6px;white-space:pre-wrap}
+  .out{color:#7dd3fc}
+  .in{color:#86efac}
+  .bad{color:#fca5a5}
+  .hint{font-size:11px;color:var(--mut);margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <b>ResolveIT - WebSocket chat tester</b>
+  <span>Open this file in TWO browser windows: log in as the USER in one, the SUPPORT engineer in the other.</span>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>1 &middot; Log in (REST)</h2>
+    <label>Backend</label>
+    <input id="host" value="http://localhost:8080">
+    <label>Email</label>
+    <input id="email" value="user@example.com">
+    <label>Password</label>
+    <input id="pass" type="password" value="password123">
+    <div class="row">
+      <button id="loginBtn">Log in</button>
+      <button id="logoutBtn" class="alt" disabled>Log out</button>
+    </div>
+
+    <h2 style="margin-top:18px">2 &middot; Connect (STOMP)</h2>
+    <label>Incident ID</label>
+    <input id="incident" placeholder="e.g. 84">
+    <div class="row">
+      <button id="connBtn" disabled>Connect</button>
+      <button id="discBtn" class="alt" disabled>Disconnect</button>
+    </div>
+    <div id="status"><span class="dot"></span>Not logged in</div>
+    <div class="hint">The USER must be the one who reported the incident, and the SUPPORT
+      engineer must be the one it was assigned to. Anyone else is refused by
+      IncidentAccessService.<br><br>
+      After <b>Log out</b>, press <b>Connect</b> again with the same token: the CONNECT
+      frame is refused, because logout revokes the token for WebSocket as well as REST.</div>
+  </div>
+
+  <div class="card">
+    <h2>Incident conversation</h2>
+    <div id="chat"><div class="sys">Log in and connect to start.</div></div>
+    <div class="row" style="margin-top:10px">
+      <input id="text" placeholder="Type a message and press Enter" disabled style="flex:4">
+      <button id="sendBtn" disabled style="flex:1;margin-top:0">Send</button>
+      <button id="readBtn" class="alt" disabled style="flex:1;margin-top:0">Mark read</button>
+    </div>
+    <h2 style="margin-top:16px">Raw STOMP frames</h2>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+/* -------------------------------------------------------------------
+   No libraries are used. STOMP is a plain-text protocol, so the frames
+   are written by hand below - which also makes it obvious exactly what
+   the server receives and sends back.
+   ------------------------------------------------------------------- */
+var NUL = String.fromCharCode(0);
+function $(id) { return document.getElementById(id); }
+var ws = null, jwt = null, me = null, unread = [];
+
+function log(txt, cls) {
+  var d = document.createElement('div');
+  d.className = cls || '';
+  d.textContent = txt;
+  $('log').appendChild(d);
+  $('log').scrollTop = $('log').scrollHeight;
+}
+function setStatus(html, cls) {
+  $('status').innerHTML = '<span class="dot ' + (cls || '') + '"></span>' + html;
+}
+function sys(txt, err) {
+  var d = document.createElement('div');
+  d.className = 'sys' + (err ? ' err' : '');
+  d.textContent = txt;
+  $('chat').appendChild(d);
+  $('chat').scrollTop = $('chat').scrollHeight;
+}
+
+/* A STOMP frame is:  COMMAND \n header:value \n \n body NUL */
+function frame(command, headers, body) {
+  var h = '';
+  for (var k in (headers || {})) { h += k + ':' + headers[k] + '\n'; }
+  return command + '\n' + h + '\n' + (body || '') + NUL;
+}
+/* Split a received frame back into command / headers / body */
+function parse(raw) {
+  var clean = raw.charAt(raw.length - 1) === NUL ? raw.slice(0, -1) : raw;
+  var split = clean.indexOf('\n\n');
+  var head = clean.slice(0, split);
+  var body = clean.slice(split + 2);
+  var lines = head.split('\n');
+  var headers = {};
+  for (var i = 1; i < lines.length; i++) {
+    var c = lines[i].indexOf(':');
+    if (c > 0) { headers[lines[i].slice(0, c)] = lines[i].slice(c + 1); }
+  }
+  return { command: lines[0], headers: headers, body: body };
+}
+function send(raw) {
+  ws.send(raw);
+  log('>> ' + raw.split(NUL).join('').trim(), 'out');
+}
+
+/* ---------- STEP 1: ordinary REST login, exactly like Swagger does ---------- */
+$('loginBtn').onclick = function () {
+  fetch($('host').value + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: $('email').value, password: $('pass').value })
+  })
+  .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+  .then(function (res) {
+    if (!res.ok) { setStatus('Login failed: ' + (res.d.message || ''), 'err'); return; }
+    jwt = res.d.token;
+    me = res.d;
+    setStatus('Logged in as <b>' + res.d.name + '</b> (' + res.d.role + ', id ' + res.d.userId + ')', 'on');
+    $('connBtn').disabled = false;
+    $('logoutBtn').disabled = false;
+    log('login ok -> role=' + res.d.role + ' userId=' + res.d.userId, 'in');
+  })
+  .catch(function () { setStatus('Cannot reach the backend. Is it running?', 'err'); });
+};
+
+/* ---------- STEP 1b: logout revokes THIS token, on the server ----------
+   Worth trying after logging out: press Connect again with the same token.
+   The CONNECT frame is refused, because StompAuthChannelInterceptor checks the
+   same revocation list the REST filter does. */
+$('logoutBtn').onclick = function () {
+  if (!jwt) { return; }
+  fetch($('host').value + '/api/auth/logout', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + jwt }
+  })
+  .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+  .then(function (res) {
+    if (!res.ok) {
+      setStatus('Logout failed: ' + (res.d.message || ''), 'err');
+      log('logout failed -> ' + (res.d.message || ''), 'bad');
+      return;
+    }
+    log('logout ok -> this JWT is now revoked; reconnecting with it will be refused', 'in');
+    setStatus('Logged out. The old token is revoked - log in again to reconnect.', 'err');
+    /* Keep the token in `jwt` on purpose, so Connect can be pressed again to see
+       the server refuse it. Log in again to replace it with a working one. */
+    $('logoutBtn').disabled = true;
+  })
+  .catch(function () { setStatus('Cannot reach the backend. Is it running?', 'err'); });
+};
+
+/* ---------- STEP 2: STOMP over WebSocket, carrying the same JWT ---------- */
+$('connBtn').onclick = function () {
+  var id = $('incident').value.replace(/\s/g, '');
+  if (!id) { setStatus('Enter an incident ID first', 'err'); return; }
+
+  /* SockJS also exposes a plain WebSocket transport at /ws/websocket */
+  ws = new WebSocket($('host').value.replace(/^http/, 'ws') + '/ws/websocket');
+
+  ws.onopen = function () {
+    /* The JWT travels in the CONNECT frame - the same token the REST calls use.
+       StompAuthChannelInterceptor reads it and binds the principal. */
+    send(frame('CONNECT', {
+      'accept-version': '1.2',
+      'host': 'localhost',
+      'Authorization': 'Bearer ' + jwt
+    }));
+  };
+
+  ws.onmessage = function (e) {
+    var f = parse(e.data);
+    log('<< ' + e.data.split(NUL).join('').trim(), f.command === 'ERROR' ? 'bad' : 'in');
+
+    if (f.command === 'CONNECTED') {
+      /* Every SUBSCRIBE is authorised against this incident by the server. */
+      send(frame('SUBSCRIBE', { id: 'sub-msg', destination: '/topic/incidents/' + id + '/messages' }));
+      send(frame('SUBSCRIBE', { id: 'sub-upd', destination: '/topic/incidents/' + id + '/updates' }));
+      send(frame('SUBSCRIBE', { id: 'sub-red', destination: '/topic/incidents/' + id + '/read' }));
+      setStatus('Connected as <b>' + me.name + '</b> on incident ' + id, 'on');
+      ['text', 'sendBtn', 'readBtn', 'discBtn'].forEach(function (x) { $(x).disabled = false; });
+      $('connBtn').disabled = true;
+      sys('Connected. Messages will appear live.');
+    }
+
+    if (f.command === 'MESSAGE') {
+      var dest = f.headers.destination || '';
+      var payload = JSON.parse(f.body);
+
+      if (dest.indexOf('/messages') > 0) {
+        var mine = payload.senderId === me.userId;
+        if (!mine) { unread.push(payload.messageId); }
+        var d = document.createElement('div');
+        d.className = 'msg' + (mine ? ' me' : '');
+        var who = document.createElement('div');
+        who.className = 'who ' + payload.senderRole;
+        who.textContent = payload.senderName + ' · ' + payload.senderRole;
+        var body = document.createElement('div');
+        body.textContent = payload.messageText;
+        var meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = '#' + payload.messageId + ' · '
+                         + new Date(payload.sentAt).toLocaleTimeString()
+                         + (payload.isRead ? ' · read' : '');
+        d.appendChild(who); d.appendChild(body); d.appendChild(meta);
+        $('chat').appendChild(d);
+        $('chat').scrollTop = $('chat').scrollHeight;
+      }
+      if (dest.indexOf('/updates') > 0) {
+        sys('status is now ' + payload.status + (payload.resolvedAt ? ' (resolved)' : ''));
+      }
+      if (dest.indexOf('/read') > 0) {
+        sys('messages marked read: [' + payload.updatedMessageIds.join(', ') + ']');
+      }
+    }
+
+    if (f.command === 'ERROR') {
+      sys('Server refused: ' + (f.headers.message || 'unknown'), true);
+      setStatus('Refused: ' + (f.headers.message || ''), 'err');
+    }
+  };
+
+  ws.onclose = function () {
+    setStatus('Disconnected', 'err');
+    ['text', 'sendBtn', 'readBtn', 'discBtn'].forEach(function (x) { $(x).disabled = true; });
+    $('connBtn').disabled = false;
+  };
+};
+
+$('discBtn').onclick = function () { send(frame('DISCONNECT')); ws.close(); };
+
+/* ---------- Sending: goes out on /app, comes back on /topic ---------- */
+function doSend() {
+  var t = $('text').value.trim();
+  if (!t) { return; }
+  send(frame('SEND',
+    { destination: '/app/incidents/' + $('incident').value.replace(/\s/g, '') + '/messages',
+      'content-type': 'application/json' },
+    JSON.stringify({ messageText: t })));
+  $('text').value = '';
+}
+$('sendBtn').onclick = doSend;
+$('text').addEventListener('keydown', function (e) { if (e.key === 'Enter') { doSend(); } });
+
+$('readBtn').onclick = function () {
+  if (!unread.length) { sys('nothing from the other person to mark read'); return; }
+  send(frame('SEND',
+    { destination: '/app/incidents/' + $('incident').value.replace(/\s/g, '') + '/read',
+      'content-type': 'application/json' },
+    JSON.stringify({ messageIds: unread })));
+  unread = [];
+};
+</script>
+</body>
+</html>
