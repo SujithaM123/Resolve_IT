@@ -673,41 +673,149 @@ code, but they are worth knowing about.
    hand through Swagger.
 
 ---
-
 ## Project layout
 
+114 files. Every Java class is listed, because knowing where a rule lives is most
+of knowing this codebase.
+
 ```
-src/main/java/com/resolveit/
-  ResolveItApplication.java  The main class
-
-  controller/   Six REST controllers (fourteen endpoints) + one STOMP controller
-  service/      Business logic: auth, incidents, conversation, support workflow,
-                assignment, classification, priority, per-incident access
-  repository/   Seven Spring Data JPA repositories
-  entity/       Seven JPA entities (one per table) + the three enums describing
-                their column values: IncidentStatus (lifecycle + transition
-                rules), Severity, Priority
-  dto/          Request/response records matching the documented JSON
-  config/       SecurityConfig, WebSocketConfig, OpenApiConfig
-  security/     JWT issue/verify, request filter, user lookup, STOMP
-                CONNECT/SUBSCRIBE/SEND auth, logout token revocation,
-                401/403 handlers, RoleName
-  exception/    Typed exceptions + one @RestControllerAdvice
-  opsai/        OpsAiService abstraction + the deterministic implementation
-
-src/main/resources/
-  application.properties          the only file to edit on a new machine
-  db/           schema-oracle.sql       creates the seven RESOLVE_ tables
-                seed-data-oracle.sql    roles, teams, demo accounts, history
-                add-super-admin-oracle.sql        incremental, existing database
-                add-network-infra-teams-oracle.sql  incremental, existing database
-  swagger/      the browser-side scripts that make Swagger carry the JWT
-
-docs/           The three specifications, architecture notes, the learning guide,
-                and websocket-chat-test.html (a standalone WebSocket chat tester)
+Resolve_IT/
+├── pom.xml                     Maven build: Java 21, Spring Boot 4.0.8, jjwt, ojdbc11
+├── README.md                   this file
+├── .gitignore                  excludes target/, IDE files, logs
+│
+├── docs/
+│   ├── Feature.md                          spec 1 — what the product does
+│   ├── backendAPI.md                       spec 2 — the 14 REST APIs, contract by contract
+│   ├── Database_Schema.md                  spec 3 — the seven tables, column by column
+│   ├── ARCHITECTURE.md                     how a request moves through the code
+│   ├── ResolveIT_Backend_Learning_Guide.md file-by-file walkthrough + evaluation Q&A
+│   └── websocket-chat-test.html            standalone WebSocket chat tester (open in 2 tabs)
+│
+└── src/main/
+    ├── java/com/resolveit/
+    │   ├── ResolveItApplication.java        @SpringBootApplication — the entry point
+    │   │
+    │   ├── config/                          startup wiring
+    │   │   ├── SecurityConfig.java              filter chain, URL→role rules, BCrypt bean
+    │   │   ├── WebSocketConfig.java             /ws endpoint, /app and /topic prefixes
+    │   │   ├── OpenApiConfig.java               Swagger metadata (declares no security scheme)
+    │   │   └── SwaggerAutoTokenTransformer.java injects the browser-side JWT helpers
+    │   │
+    │   ├── security/                        authentication — runs before every controller
+    │   │   ├── JwtService.java                  signs and verifies tokens; stamps each jti
+    │   │   ├── TokenIdentity.java               subject + jti + expiry from a verified token
+    │   │   ├── TokenRevocationService.java      the logout list — revoked jti until expiry
+    │   │   ├── JwtAuthenticationFilter.java     per-request: verify, check revoked, identify
+    │   │   ├── StompAuthChannelInterceptor.java same rules for STOMP CONNECT/SUBSCRIBE/SEND
+    │   │   ├── BearerTokens.java                one "Authorization: Bearer" parser, 3 callers
+    │   │   ├── AuthenticatedUser.java           the principal: userId, name, role, teamId
+    │   │   ├── CustomUserDetailsService.java    loads the account fresh from Oracle
+    │   │   ├── RoleName.java                    USER / SUPPORT / SUPER_ADMIN constants
+    │   │   ├── RestAuthenticationEntryPoint.java JSON 401 body
+    │   │   └── RestAccessDeniedHandler.java     JSON 403 body
+    │   │
+    │   ├── controller/                      HTTP and STOMP entry points only, no rules
+    │   │   ├── AuthController.java              login, register, logout
+    │   │   ├── UserDashboardController.java     the caller's own incidents
+    │   │   ├── IncidentController.java          classify, create, detail, messages, mark read
+    │   │   ├── SupportController.java           support dashboard, status update, OpsAI
+    │   │   ├── SupportUserController.java       SUPER_ADMIN provisions a SUPPORT engineer
+    │   │   ├── TeamController.java              team list for the create-engineer dropdown
+    │   │   └── IncidentWebSocketController.java @MessageMapping — registers no HTTP routes
+    │   │
+    │   ├── service/                         all business logic and @Transactional boundaries
+    │   │   ├── AuthService.java                 register, login, logout
+    │   │   ├── IncidentAccessService.java       per-incident ownership: view / participate / modify
+    │   │   ├── IncidentService.java             create, dashboard, incident detail
+    │   │   ├── IncidentMessageService.java      conversation: send, mark read
+    │   │   ├── SupportService.java              support dashboard, status/root cause/resolution
+    │   │   ├── ClassificationService.java       suggests service, category, severity
+    │   │   ├── PriorityService.java             severity → priority band
+    │   │   ├── AssignmentService.java           four-factor engineer scoring
+    │   │   ├── Availability.java                availability input to that score
+    │   │   ├── IncidentSimilarityService.java   similar-incident experience score
+    │   │   ├── TextSimilarity.java              the text comparison behind it
+    │   │   ├── TeamDirectoryService.java        team lookup
+    │   │   └── RealtimeNotifier.java            broadcasts to /topic, always post-commit
+    │   │
+    │   ├── repository/                      Spring Data JPA, one per table
+    │   │   ├── AppUserRepository.java
+    │   │   ├── RoleRepository.java
+    │   │   ├── TeamServiceRepository.java
+    │   │   ├── IncidentRepository.java
+    │   │   ├── IncidentAssignmentRepository.java
+    │   │   ├── IncidentMessageRepository.java
+    │   │   └── IncidentLogRepository.java
+    │   │
+    │   ├── entity/                          seven tables + three enums with the rules
+    │   │   ├── AppUser.java                     → RESOLVE_USER
+    │   │   ├── Role.java                        → RESOLVE_ROLE
+    │   │   ├── TeamService.java                 → RESOLVE_TEAM_SERVICE
+    │   │   ├── Incident.java                    → RESOLVE_INCIDENT
+    │   │   ├── IncidentAssignment.java          → RESOLVE_INCIDENT_ASSIGNMENT
+    │   │   ├── IncidentMessage.java             → RESOLVE_INCIDENT_MESSAGE
+    │   │   ├── IncidentLog.java                 → RESOLVE_INCIDENT_LOGS
+    │   │   ├── IncidentStatus.java              lifecycle + legal transitions
+    │   │   ├── Severity.java
+    │   │   └── Priority.java
+    │   │
+    │   ├── dto/                             34 records — the JSON going in and out
+    │   │   ├── LoginRequest / LoginResponse / LogoutResponse
+    │   │   ├── RegisterRequest / RegisterResponse
+    │   │   ├── CreateSupportUserRequest / CreateSupportUserResponse / TeamOption
+    │   │   ├── ClassifyRequest / ClassifyResponse
+    │   │   ├── CreateIncidentRequest / CreateIncidentResponse / IncidentDetailResponse
+    │   │   ├── SendMessageRequest / MessageResponse / MarkReadRequest / MarkReadResponse
+    │   │   ├── UserDashboardResponse / UserIncidentSummary / StatusHistoryEntry
+    │   │   ├── SupportDashboardResponse / SupportIncidentSummary / SupportSummary
+    │   │   ├── SupportAnalytics / AssignedSupport
+    │   │   ├── SupportIncidentUpdateRequest / SupportIncidentUpdateResponse
+    │   │   └── OpsAiRequest / OpsAiResponse + the five result records
+    │   │       (SummarizeResult, SimilarIncidentsResult, AnalyzeResult,
+    │   │        RootCauseResult, ResolutionResult)
+    │   │
+    │   ├── opsai/                           the OpsAI assistant, self-contained
+    │   │   ├── OpsAiService.java                the interface
+    │   │   ├── DeterministicOpsAiService.java   pure Java, no external provider
+    │   │   └── OpsAiAction.java                 the five actions
+    │   │
+    │   └── exception/                       one error shape for the whole API
+    │       ├── GlobalExceptionHandler.java      @RestControllerAdvice
+    │       ├── ApiErrorResponse.java            timestamp, status, error, message, path
+    │       ├── ApiException.java                the base type
+    │       ├── BadRequestException.java         400
+    │       ├── UnauthorizedException.java       401
+    │       ├── ForbiddenException.java          403
+    │       ├── NotFoundException.java           404
+    │       └── ConflictException.java           409
+    │
+    └── resources/
+        ├── application.properties           the only file to edit on a new machine
+        ├── db/
+        │   ├── schema-oracle.sql                creates the seven RESOLVE_ tables
+        │   ├── seed-data-oracle.sql             roles, teams, accounts, demo history
+        │   ├── add-super-admin-oracle.sql       incremental — already-seeded database
+        │   └── add-network-infra-teams-oracle.sql   incremental — already-seeded database
+        └── swagger/
+            ├── resolveit-interceptors.js    keeps the JWT so Swagger needs no Authorize button
+            └── resolveit-ui.js              search box and role filter for the endpoint list
 ```
 
-There is no `src/test/` directory.
+There is no `src/test/` directory, and `target/` is build output — gitignored, and
+rebuilt by `mvn package`.
+
+### Where to look first
+
+| Question | File |
+|---|---|
+| Which role may call this URL? | `config/SecurityConfig.java` |
+| How is a token issued and checked? | `security/JwtService.java` |
+| How does logout revoke a token? | `security/TokenRevocationService.java` |
+| Why did I get 403 on an incident? | `service/IncidentAccessService.java` |
+| How is an engineer chosen? | `service/AssignmentService.java` |
+| Which status may follow which? | `entity/IncidentStatus.java` |
+| Why is my error shaped like that? | `exception/GlobalExceptionHandler.java` |
 
 ### Design notes
 
