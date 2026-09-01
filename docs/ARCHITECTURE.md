@@ -152,8 +152,8 @@ only way back is `POST /api/auth/login`.
 2. `service/IncidentService.java · userDashboard` — queries strictly by the
    authenticated reporter's id, newest first. **Ownership is enforced by the
    query itself**, not by filtering afterwards.
-3. `dto/UserIncidentSummary.java` — id, code, title, status, severity, priority,
-   createdAt.
+3. `dto/UserDashboardResponse.java · UserIncidentSummary` — id, code, title, status,
+   severity, priority, createdAt. The row record is nested in the response it belongs to.
 
 ## 3 · `POST /api/incidents/classify` — USER
 

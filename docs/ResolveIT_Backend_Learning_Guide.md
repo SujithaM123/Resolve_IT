@@ -11,13 +11,13 @@ says **Not implemented** instead of guessing.
 | Thing | Count |
 |---|---|
 | Spring Boot version | 4.0.8 (Java 21) |
-| Java files under `src/main/java` | 98 |
+| Java files under `src/main/java` | 87 |
 | REST controllers | 6 (+1 STOMP controller) |
 | REST endpoints | 14 |
 | Entities | 7 (+3 domain enums in the same package) |
 | Repositories | 7 |
 | Oracle tables | 7 |
-| DTO records | 34 |
+| DTO records | 34, in 23 files — 11 are nested inside the single response that uses them |
 | Automated tests | **None** — there is no `src/test/` directory; the API is exercised by hand through Swagger UI |
 
 ---
@@ -54,7 +54,7 @@ says **Not implemented** instead of guessing.
 | Folder | What it holds | Why it is separate |
 |---|---|---|
 | `controller/` | Classes that receive a request | Their only job is HTTP/STOMP. No business rules here. |
-| `dto/` | Request and response shapes | So we never send database objects straight to the client. |
+| `dto/` | Request and response shapes | So we never send database objects straight to the client. A record used by exactly one response is nested inside it, so the whole shape reads in one file. |
 | `service/` | Business logic | The rules live in one place, reusable by REST *and* WebSocket. |
 | `repository/` | Database access | Spring writes the SQL for us from method names. |
 | `entity/` | Table mappings | One Java class = one Oracle table, plus the enums with the rules for their column values (e.g. which status may follow which). |
@@ -2599,7 +2599,9 @@ the hash. `LoginResponse` has no such field — the leak is impossible **by desi
 remembering to hide it.
 
 Your DTOs are Java **records** — short, immutable, and they generate `equals`, `hashCode`
-and accessors automatically.
+and accessors automatically. A record that is only ever part of one response is **nested
+inside that response** (e.g. `UserDashboardResponse.UserIncidentSummary`), so one file shows
+the endpoint's whole JSON shape.
 
 ## 5. JPA / Hibernate
 
@@ -3173,6 +3175,16 @@ impossible to leak."
 **DEEPER:** DTOs also decouple the API from the database — I can change a column without
 breaking clients — and they carry the validation annotations.
 
+**Q: Why are some of your DTOs nested inside another record?**
+**ANSWER:** "A record that only ever appears inside one response lives inside that response.
+`UserIncidentSummary` is only ever a row of `UserDashboardResponse`, so it is nested there —
+one file gives me the whole shape of that endpoint's JSON. That took the dto package from 34
+files to 23."
+**DEEPER:** It is a source-level choice with no effect on the wire: Jackson serialises a
+nested record exactly as it does a top-level one, so the JSON and the OpenAPI document are
+byte-identical either way. Records that *are* returned on their own — `MessageResponse`,
+`TeamOption`, `MarkReadResponse` — stay top-level, because they belong to no single parent.
+
 **Q: Why is `@Transactional` needed?**
 **ANSWER:** "So a group of database writes either all succeed or all fail. Creating an
 incident writes to four tables — if one failed, I don't want half an incident."
@@ -3615,7 +3627,23 @@ Security's `hasRole(...)` takes a String.
 | `SendMessageRequest`, `MarkReadRequest` | `MessageResponse`, `MarkReadResponse` |
 | `SupportIncidentUpdateRequest`, `OpsAiRequest` | `SupportIncidentUpdateResponse`, `OpsAiResponse` |
 | — | `UserDashboardResponse`, `SupportDashboardResponse`, `IncidentDetailResponse` |
-| — | OpsAI results: `SummarizeResult`, `SimilarIncidentsResult`, `AnalyzeResult`, `RootCauseResult`, `ResolutionResult` |
+
+Eleven records live **nested inside** the one response that uses them, so a response's whole
+shape reads in a single file. They are written `Parent.Nested` in an import, but the code
+still refers to them by their short name:
+
+| Parent response | Nested records |
+|---|---|
+| `OpsAiResponse` | `SummarizeResult`, `SimilarIncidentsResult`, `AnalyzeResult`, `RootCauseResult`, `ResolutionResult` |
+| `IncidentDetailResponse` | `AssignedSupport`, `StatusHistoryEntry` |
+| `UserDashboardResponse` | `UserIncidentSummary` |
+| `SupportDashboardResponse` | `SupportSummary`, `SupportIncidentSummary`, `SupportAnalytics` |
+
+`MessageResponse`, `TeamOption` and `MarkReadResponse` stay top-level: each is returned on its
+own by an endpoint (and `MessageResponse` is also broadcast over WebSocket), so it belongs to
+no single parent. Every request DTO keeps its own file and its own validation annotations.
+Nesting is a source-level detail only — Jackson serialises a nested record exactly as it
+serialises a top-level one, so the JSON and the OpenAPI document are unchanged.
 
 ## Configuration classes
 
