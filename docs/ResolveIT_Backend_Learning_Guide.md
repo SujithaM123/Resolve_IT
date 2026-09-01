@@ -28,7 +28,7 @@ says **Not implemented** instead of guessing.
 
 ```
 <project folder>/
-├── src/main/java/com/resolveit/
+├── src/main/java/com/dtcc/intern/demo/
 │   ├── ResolveItApplication.java   ← the starting point
 │   ├── config/                    ← settings: security, websocket, swagger
 │   ├── controller/                ← receives HTTP and STOMP requests
@@ -155,7 +155,7 @@ public class ResolveItApplication {
 |---|---|
 | `@SpringBootConfiguration` | This class holds configuration |
 | `@EnableAutoConfiguration` | Spring sets up Tomcat, JPA, security automatically |
-| `@ComponentScan` | Spring scans `com.resolveit` and everything below it |
+| `@ComponentScan` | Spring scans `com.dtcc.intern.demo` and everything below it |
 
 That scan is *why* your `@RestController`, `@Service`, `@Repository` and `@Component`
 classes get found without you registering them anywhere.
@@ -163,7 +163,7 @@ classes get found without you registering them anywhere.
 **If it did not exist:** the application could not start.
 
 > **Say to the evaluator:** "This is my main class. `@SpringBootApplication` turns on
-> auto-configuration and component scanning of the `com.resolveit` package, so all my
+> auto-configuration and component scanning of the `com.dtcc.intern.demo` package, so all my
 > controllers, services and repositories are discovered and wired automatically."
 
 ---
@@ -2520,7 +2520,7 @@ java -jar resolveit-backend-1.0.0.jar
    ↓
 ResolveItApplication.main()
    ↓
-@ComponentScan finds every @RestController/@Service/@Repository/@Component/@Configuration in com.resolveit
+@ComponentScan finds every @RestController/@Service/@Repository/@Component/@Configuration in com.dtcc.intern.demo
    ↓
 application.properties is read
    ↓
@@ -3109,7 +3109,7 @@ Request → security → SupportController → OpsAiAction enum → SupportServi
 
 **Q: Why did you use `@SpringBootApplication`?**
 **ANSWER:** "It combines configuration, auto-configuration and component scanning, so Spring
-finds all my classes under `com.resolveit` and sets up Tomcat, JPA and security for me."
+finds all my classes under `com.dtcc.intern.demo` and sets up Tomcat, JPA and security for me."
 **DEEPER:** Without `@ComponentScan`, none of my `@Service` or `@RestController` classes
 would be registered and every injection would fail at startup.
 
@@ -3348,7 +3348,7 @@ the USER role.
 4. **Dependencies:** none.
 5. **Called by:** the JVM.
 6. **Calls:** the whole Spring container.
-7. **Verbal:** "My entry point. It enables auto-configuration and scans `com.resolveit`."
+7. **Verbal:** "My entry point. It enables auto-configuration and scans `com.dtcc.intern.demo`."
 
 ### `SecurityConfig.java`
 1. **Purpose:** decides who may call which URL.

@@ -693,7 +693,7 @@ Resolve_IT/
 │   └── websocket-chat-test.html            standalone WebSocket chat tester (open in 2 tabs)
 │
 └── src/main/
-    ├── java/com/resolveit/
+    ├── java/com/dtcc/intern/demo/
     │   ├── ResolveItApplication.java        @SpringBootApplication — the entry point
     │   │
     │   ├── config/                          startup wiring

@@ -1,0 +1,12 @@
+package com.dtcc.intern.demo;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class ResolveItApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(ResolveItApplication.class, args);
+    }
+}
