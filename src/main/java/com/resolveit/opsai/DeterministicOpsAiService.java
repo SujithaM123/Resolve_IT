@@ -1,11 +1,11 @@
 package com.resolveit.opsai;
 
-import com.resolveit.dto.AnalyzeResult;
+import com.resolveit.dto.OpsAiResponse.AnalyzeResult;
 import com.resolveit.dto.OpsAiResponse;
-import com.resolveit.dto.ResolutionResult;
-import com.resolveit.dto.RootCauseResult;
-import com.resolveit.dto.SimilarIncidentsResult;
-import com.resolveit.dto.SummarizeResult;
+import com.resolveit.dto.OpsAiResponse.ResolutionResult;
+import com.resolveit.dto.OpsAiResponse.RootCauseResult;
+import com.resolveit.dto.OpsAiResponse.SimilarIncidentsResult;
+import com.resolveit.dto.OpsAiResponse.SummarizeResult;
 import com.resolveit.entity.Incident;
 import com.resolveit.entity.IncidentMessage;
 import com.resolveit.repository.IncidentMessageRepository;

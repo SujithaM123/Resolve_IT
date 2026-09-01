@@ -1,14 +1,14 @@
 package com.resolveit.service;
 
-import com.resolveit.dto.AssignedSupport;
+import com.resolveit.dto.IncidentDetailResponse.AssignedSupport;
 import com.resolveit.dto.CreateIncidentRequest;
 import com.resolveit.dto.CreateIncidentResponse;
 import com.resolveit.dto.IncidentDetailResponse;
 import com.resolveit.dto.MessageResponse;
-import com.resolveit.dto.StatusHistoryEntry;
+import com.resolveit.dto.IncidentDetailResponse.StatusHistoryEntry;
 import com.resolveit.dto.SupportIncidentUpdateResponse;
 import com.resolveit.dto.UserDashboardResponse;
-import com.resolveit.dto.UserIncidentSummary;
+import com.resolveit.dto.UserDashboardResponse.UserIncidentSummary;
 import com.resolveit.exception.BadRequestException;
 import com.resolveit.exception.NotFoundException;
 import com.resolveit.entity.AppUser;

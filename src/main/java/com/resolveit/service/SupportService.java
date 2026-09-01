@@ -1,12 +1,12 @@
 package com.resolveit.service;
 
 import com.resolveit.dto.OpsAiResponse;
-import com.resolveit.dto.SupportAnalytics;
+import com.resolveit.dto.SupportDashboardResponse.SupportAnalytics;
 import com.resolveit.dto.SupportDashboardResponse;
-import com.resolveit.dto.SupportIncidentSummary;
+import com.resolveit.dto.SupportDashboardResponse.SupportIncidentSummary;
 import com.resolveit.dto.SupportIncidentUpdateRequest;
 import com.resolveit.dto.SupportIncidentUpdateResponse;
-import com.resolveit.dto.SupportSummary;
+import com.resolveit.dto.SupportDashboardResponse.SupportSummary;
 import com.resolveit.exception.BadRequestException;
 import com.resolveit.exception.ConflictException;
 import com.resolveit.entity.Incident;

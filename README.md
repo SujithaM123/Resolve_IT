@@ -675,7 +675,7 @@ code, but they are worth knowing about.
 ---
 ## Project layout
 
-114 files. Every Java class is listed, because knowing where a rule lives is most
+103 files. Every Java class is listed, because knowing where a rule lives is most
 of knowing this codebase.
 
 ```
@@ -760,20 +760,26 @@ Resolve_IT/
     │   │   ├── Severity.java
     │   │   └── Priority.java
     │   │
-    │   ├── dto/                             34 records — the JSON going in and out
+    │   ├── dto/                             23 records — the JSON going in and out
     │   │   ├── LoginRequest / LoginResponse / LogoutResponse
     │   │   ├── RegisterRequest / RegisterResponse
     │   │   ├── CreateSupportUserRequest / CreateSupportUserResponse / TeamOption
     │   │   ├── ClassifyRequest / ClassifyResponse
-    │   │   ├── CreateIncidentRequest / CreateIncidentResponse / IncidentDetailResponse
+    │   │   ├── CreateIncidentRequest / CreateIncidentResponse
     │   │   ├── SendMessageRequest / MessageResponse / MarkReadRequest / MarkReadResponse
-    │   │   ├── UserDashboardResponse / UserIncidentSummary / StatusHistoryEntry
-    │   │   ├── SupportDashboardResponse / SupportIncidentSummary / SupportSummary
-    │   │   ├── SupportAnalytics / AssignedSupport
     │   │   ├── SupportIncidentUpdateRequest / SupportIncidentUpdateResponse
-    │   │   └── OpsAiRequest / OpsAiResponse + the five result records
-    │   │       (SummarizeResult, SimilarIncidentsResult, AnalyzeResult,
-    │   │        RootCauseResult, ResolutionResult)
+    │   │   ├── IncidentDetailResponse    nests AssignedSupport, StatusHistoryEntry
+    │   │   ├── UserDashboardResponse     nests UserIncidentSummary
+    │   │   ├── SupportDashboardResponse  nests SupportSummary, SupportIncidentSummary,
+    │   │   │                              SupportAnalytics
+    │   │   ├── OpsAiRequest
+    │   │   └── OpsAiResponse             nests the five result shapes: SummarizeResult,
+    │   │                                SimilarIncidentsResult, AnalyzeResult,
+    │   │                                RootCauseResult, ResolutionResult
+    │   │
+    │   │   A record that only ever appears inside one response is nested in it, so the
+    │   │   whole shape reads in one file. The JSON is unaffected — Jackson serialises a
+    │   │   nested record exactly like a top-level one.
     │   │
     │   ├── opsai/                           the OpsAI assistant, self-contained
     │   │   ├── OpsAiService.java                the interface
