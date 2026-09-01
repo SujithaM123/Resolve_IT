@@ -17,7 +17,7 @@ says **Not implemented** instead of guessing.
 | Entities | 7 (+3 domain enums in the same package) |
 | Repositories | 7 |
 | Oracle tables | 7 |
-| DTO records | 34, in 23 files — 11 are nested inside the single response that uses them |
+| DTO records | 35, in 23 files — 23 top-level, 12 nested inside the single response that uses them |
 | Automated tests | **None** — there is no `src/test/` directory; the API is exercised by hand through Swagger UI |
 
 ---
@@ -3628,13 +3628,13 @@ Security's `hasRole(...)` takes a String.
 | `SupportIncidentUpdateRequest`, `OpsAiRequest` | `SupportIncidentUpdateResponse`, `OpsAiResponse` |
 | — | `UserDashboardResponse`, `SupportDashboardResponse`, `IncidentDetailResponse` |
 
-Eleven records live **nested inside** the one response that uses them, so a response's whole
-shape reads in a single file. They are written `Parent.Nested` in an import, but the code
-still refers to them by their short name:
+Twelve of the 35 records live **nested inside** the one response that uses them, so a
+response's whole shape reads in a single file. They are written `Parent.Nested` in an import,
+but the code still refers to them by their short name:
 
 | Parent response | Nested records |
 |---|---|
-| `OpsAiResponse` | `SummarizeResult`, `SimilarIncidentsResult`, `AnalyzeResult`, `RootCauseResult`, `ResolutionResult` |
+| `OpsAiResponse` | `SummarizeResult`, `SimilarIncidentsResult` (which itself nests `SimilarIncident`), `AnalyzeResult`, `RootCauseResult`, `ResolutionResult` |
 | `IncidentDetailResponse` | `AssignedSupport`, `StatusHistoryEntry` |
 | `UserDashboardResponse` | `UserIncidentSummary` |
 | `SupportDashboardResponse` | `SupportSummary`, `SupportIncidentSummary`, `SupportAnalytics` |
