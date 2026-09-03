@@ -10,6 +10,8 @@ import com.dtcc.intern.demo.entity.IncidentMessage;
 import com.dtcc.intern.demo.repository.AppUserRepository;
 import com.dtcc.intern.demo.repository.IncidentMessageRepository;
 import com.dtcc.intern.demo.security.AuthenticatedUser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,8 @@ import java.util.List;
 
 @Service
 public class IncidentMessageService {
+
+    private static final Logger log = LoggerFactory.getLogger(IncidentMessageService.class);
 
     private final IncidentMessageRepository messageRepository;
     private final AppUserRepository appUserRepository;
@@ -54,6 +58,10 @@ public class IncidentMessageService {
         message.setIsRead(false);
 
         IncidentMessage saved = messageRepository.save(message);
+
+        log.info("Message {} sent on incident {} by user {}",
+                saved.getMessageId(), incident.getIncidentCode(), caller.getUserId());
+
         return IncidentService.toMessageResponse(saved);
     }
 
@@ -79,6 +87,9 @@ public class IncidentMessageService {
         }
 
         messageRepository.saveAll(messages);
+
+        log.info("{} message(s) marked read on incident {} by user {}",
+                updated.size(), incidentId, caller.getUserId());
 
         return new MarkReadResponse(incidentId, updated, "READ");
     }

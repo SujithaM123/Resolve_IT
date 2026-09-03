@@ -17,6 +17,8 @@ import com.dtcc.intern.demo.repository.IncidentRepository;
 import com.dtcc.intern.demo.security.AuthenticatedUser;
 import com.dtcc.intern.demo.opsai.OpsAiAction;
 import com.dtcc.intern.demo.opsai.OpsAiService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +31,8 @@ import java.util.Map;
 
 @Service
 public class SupportService {
+
+    private static final Logger log = LoggerFactory.getLogger(SupportService.class);
 
     private static final int RECURRENCE_THRESHOLD = 2;
 
@@ -108,6 +112,8 @@ public class SupportService {
                         "Incident has an unrecognized current status and cannot be updated"));
 
         if (!current.canTransitionTo(target)) {
+            log.warn("Rejected invalid status transition {} -> {} on incident {} by engineer {}",
+                    current.stored(), target.stored(), incident.getIncidentCode(), caller.getUserId());
             throw new ConflictException(
                     "Invalid status transition from " + current.stored() + " to " + target.stored());
         }
@@ -130,6 +136,13 @@ public class SupportService {
         incidentService.writeLog(incident, target, now);
         Incident saved = incidentRepository.save(incident);
 
+        log.info("Incident {} status changed from {} to {} by engineer {}",
+                saved.getIncidentCode(), current.stored(), target.stored(), caller.getUserId());
+
+        if (target == IncidentStatus.RESOLVED) {
+            log.info("Incident {} resolved by engineer {}", saved.getIncidentCode(), caller.getUserId());
+        }
+
         return new SupportIncidentUpdateResponse(
                 saved.getIncidentId(),
                 saved.getIncidentCode(),
@@ -151,6 +164,10 @@ public class SupportService {
                         "Action must be one of SUMMARIZE, SIMILAR, ANALYZE, ROOT_CAUSE, RESOLUTION"));
 
         Incident incident = accessService.requireModifiable(incidentId, caller);
+
+        log.info("OpsAI {} requested for incident {} by engineer {}",
+                action, incident.getIncidentCode(), caller.getUserId());
+
         return opsAiService.assist(incident, action);
     }
 

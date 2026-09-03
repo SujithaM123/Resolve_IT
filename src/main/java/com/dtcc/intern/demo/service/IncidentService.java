@@ -27,6 +27,8 @@ import com.dtcc.intern.demo.repository.IncidentMessageRepository;
 import com.dtcc.intern.demo.repository.IncidentRepository;
 import com.dtcc.intern.demo.repository.TeamServiceRepository;
 import com.dtcc.intern.demo.security.AuthenticatedUser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -39,6 +41,8 @@ import java.util.UUID;
 
 @Service
 public class IncidentService {
+
+    private static final Logger log = LoggerFactory.getLogger(IncidentService.class);
 
     private static final String CODE_PREFIX = "INC-";
 
@@ -149,10 +153,21 @@ public class IncidentService {
 
             assignedUserId = engineer.getUserId();
             assignedName = engineer.getName();
+
+            log.info("Incident {} assigned to engineer {} ({}) with score {}",
+                    incident.getIncidentCode(), engineer.getUserId(), engineer.getName(),
+                    AssignmentService.toStoredScore(candidate.finalScore()));
+        } else {
+            log.warn("Incident {} could not be assigned automatically and stays REPORTED",
+                    incident.getIncidentCode());
         }
 
         Incident persisted = incidentRepository.save(incident);
         notifyAssignmentAfterCommit(persisted);
+
+        log.info("Incident {} created by user {} on team {} with severity {} and priority {}",
+                persisted.getIncidentCode(), reporter.getUserId(), team.getServiceName(),
+                persisted.getSeverity(), persisted.getPriority());
 
         return new CreateIncidentResponse(
                 persisted.getIncidentId(),

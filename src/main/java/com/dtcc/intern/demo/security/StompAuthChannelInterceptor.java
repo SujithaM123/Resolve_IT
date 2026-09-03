@@ -2,6 +2,8 @@ package com.dtcc.intern.demo.security;
 
 import com.dtcc.intern.demo.exception.ApiException;
 import com.dtcc.intern.demo.service.IncidentAccessService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.MessageChannel;
@@ -19,6 +21,8 @@ import java.util.regex.Pattern;
 
 @Component
 public class StompAuthChannelInterceptor implements ChannelInterceptor {
+
+    private static final Logger log = LoggerFactory.getLogger(StompAuthChannelInterceptor.class);
 
     private static final Pattern TOPIC_PATTERN =
             Pattern.compile("^/topic/incidents/(\\d+)/(messages|updates|read)$");
@@ -73,20 +77,26 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     private void authenticate(StompHeaderAccessor accessor) {
         String token = resolveToken(accessor);
         if (token == null) {
+            log.warn("WebSocket CONNECT rejected - no bearer token presented");
             throw new MessagingException("Authentication is required");
         }
 
         TokenIdentity identity = jwtService.extractIdentity(token)
                 .filter(candidate -> !revocationService.isRevoked(candidate.tokenId()))
-                .orElseThrow(() -> new MessagingException(
-                        "Authentication is required"));
+                .orElseThrow(() -> {
+                    log.warn("WebSocket CONNECT rejected - token is invalid, expired or revoked");
+                    return new MessagingException("Authentication is required");
+                });
 
         try {
             AuthenticatedUser user = userDetailsService.loadUserByUsername(identity.subject());
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
             accessor.setUser(authentication);
+
+            log.info("WebSocket connected for user {} ({})", user.getUserId(), user.getEmail());
         } catch (UsernameNotFoundException ex) {
+            log.warn("WebSocket CONNECT rejected - no account for {}", identity.subject());
             throw new MessagingException("Authentication is required");
         }
     }
@@ -127,8 +137,13 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
         try {
             accessService.requireViewable(incidentId, caller);
         } catch (ApiException ex) {
+            log.warn("WebSocket SUBSCRIBE to incident {} denied for user {}: {}",
+                    incidentId, caller.getUserId(), ex.getMessage());
             throw new MessagingException(ex.getMessage());
         }
+
+        log.info("WebSocket subscription to incident {} accepted for user {}",
+                incidentId, caller.getUserId());
     }
 
     public static AuthenticatedUser currentUser(StompHeaderAccessor accessor) {

@@ -308,6 +308,47 @@ at the URL in `application.properties`; if it is not, startup fails with an
 
 ---
 
+## Reading the logs
+
+The application logs its important business events to the console through SLF4J, which
+Spring Boot already provides - no logging dependency was added, and there is no Logback
+XML. Start it and you will see lines like these:
+
+```
+INFO  c.dtcc.intern.demo.service.AuthService    : Login successful for user 41 (arjun@example.com) with role USER
+INFO  c.d.intern.demo.service.IncidentService   : Incident INC-1041 created by user 41 on team Payment Service with severity HIGH and priority P1
+INFO  c.d.intern.demo.service.IncidentService   : Incident INC-1041 assigned to engineer 3 (Priya) with score 80.00
+INFO  c.d.intern.demo.service.SupportService    : Incident INC-1041 status changed from ASSIGNED to IN PROGRESS by engineer 3
+WARN  c.dtcc.intern.demo.service.AuthService    : Login failed for email arjun@example.com
+```
+
+The levels mean what you would expect. **INFO** is a normal business event worth recording;
+**WARN** is expected but notable - a failed login, a duplicate email, an invalid status
+transition, an incident no engineer could take, a rejected WebSocket frame; **ERROR** is
+reserved for the unexpected, and appears only from `GlobalExceptionHandler`, which is the
+one place that prints a stack trace. Expected 4xx responses are logged at DEBUG so that
+ordinary client mistakes do not read as failures.
+
+**No credential is ever logged** - not the password, the BCrypt hash, the JWT, the
+`Authorization` header, the database password or the JWT signing secret. Log lines identify
+*who* did something by user id and email, which is enough to investigate a problem without
+handing over the means to impersonate anyone.
+
+The level for this project's own classes is set in `application.properties`:
+
+```properties
+logging.level.com.dtcc.intern.demo=INFO
+```
+
+Change it to `DEBUG` to also see the line `GlobalExceptionHandler` writes for every expected
+4xx, which is useful when an endpoint returns 400 or 409 and you want to know why. To write
+the logs to a file as well as the console, add `logging.file.name=logs/resolveit.log`; the
+project leaves this off because the console is enough while developing.
+
+`docs/ResolveIT_Backend_Learning_Guide.md` section 18 explains the logging in full.
+
+---
+
 ## Testing the APIs manually
 
 Swagger UI is the quickest way in — start the application and open:

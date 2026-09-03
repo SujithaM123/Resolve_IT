@@ -21,6 +21,8 @@ import com.dtcc.intern.demo.security.JwtService;
 import com.dtcc.intern.demo.security.RoleName;
 import com.dtcc.intern.demo.security.TokenIdentity;
 import com.dtcc.intern.demo.security.TokenRevocationService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -31,6 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private final AuthenticationManager authenticationManager;
     private final PasswordEncoder passwordEncoder;
@@ -59,6 +63,9 @@ public class AuthService {
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
         AppUser saved = createAccount(request.name(), request.email(), request.password(), RoleName.USER, null);
+
+        log.info("Registered USER account {} for {}", saved.getUserId(), saved.getEmail());
+
         return new RegisterResponse(
                 saved.getUserId(), saved.getName(), saved.getEmail(), saved.getRole().getRoleName());
     }
@@ -78,6 +85,9 @@ public class AuthService {
 
         AppUser saved = createAccount(
                 request.name(), request.email(), request.password(), RoleName.SUPPORT, team);
+
+        log.info("Created SUPPORT account {} for {} on team {}",
+                saved.getUserId(), saved.getEmail(), team.getTeamName());
 
         return new CreateSupportUserResponse(
                 saved.getUserId(),
@@ -99,6 +109,7 @@ public class AuthService {
         String trimmedEmail = email.trim();
 
         if (appUserRepository.existsByEmailIgnoreCase(trimmedEmail)) {
+            log.warn("Account creation rejected - email already registered: {}", trimmedEmail);
             throw new ConflictException("Email is already registered");
         }
 
@@ -123,11 +134,15 @@ public class AuthService {
             authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(request.email(), request.password()));
         } catch (AuthenticationException ex) {
+            log.warn("Login failed for email {}", request.email());
             throw new UnauthorizedException("Invalid email or password");
         }
 
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
         String token = jwtService.generateToken(user);
+
+        log.info("Login successful for user {} ({}) with role {}",
+                user.getUserId(), user.getEmail(), user.getRole());
 
         return new LoginResponse(token, user.getUserId(), user.getName(), user.getRole());
     }
@@ -145,6 +160,8 @@ public class AuthService {
                 .orElseThrow(() -> new UnauthorizedException("Authentication is required"));
 
         revocationService.revoke(identity.tokenId(), identity.expiresAt());
+
+        log.info("Logout successful for {} - access token revoked", identity.subject());
 
         return new LogoutResponse("Logged out successfully");
     }

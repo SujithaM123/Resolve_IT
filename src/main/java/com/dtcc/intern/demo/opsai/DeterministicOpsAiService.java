@@ -11,6 +11,8 @@ import com.dtcc.intern.demo.entity.IncidentMessage;
 import com.dtcc.intern.demo.repository.IncidentMessageRepository;
 import com.dtcc.intern.demo.repository.IncidentRepository;
 import com.dtcc.intern.demo.service.IncidentSimilarityService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +25,8 @@ import java.util.Map;
 
 @Service
 public class DeterministicOpsAiService implements OpsAiService {
+
+    private static final Logger log = LoggerFactory.getLogger(DeterministicOpsAiService.class);
 
     private static final int SIMILAR_LIMIT = 3;
 
@@ -102,6 +106,9 @@ public class DeterministicOpsAiService implements OpsAiService {
                 .limit(SIMILAR_LIMIT)
                 .toList();
 
+        log.info("OpsAI SIMILAR found {} comparable incident(s) for {}",
+                matches.size(), incident.getIncidentCode());
+
         return new SimilarIncidentsResult(matches);
     }
 
@@ -167,6 +174,7 @@ public class DeterministicOpsAiService implements OpsAiService {
                 .toList();
 
         if (history.isEmpty()) {
+            log.info("OpsAI ROOT_CAUSE found no comparable history for {}", incident.getIncidentCode());
             return new RootCauseResult(
                     null,
                     0,
@@ -199,6 +207,9 @@ public class DeterministicOpsAiService implements OpsAiService {
                 .limit(SIMILAR_LIMIT)
                 .forEach(scored -> evidence.add(scored.incident().getIncidentCode()
                         + " at " + Math.round(scored.similarity()) + "% similarity"));
+
+        log.info("OpsAI ROOT_CAUSE suggested a cause for {} at {}% confidence from {} similar incident(s)",
+                incident.getIncidentCode(), confidence, supporting.size());
 
         return new RootCauseResult(best.getKey(), confidence, evidence);
     }

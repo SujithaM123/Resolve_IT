@@ -25,6 +25,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiErrorResponse> handleApiException(ApiException ex, HttpServletRequest request) {
+        // Expected client errors (400/401/403/404/409). The service that rejected the
+        // request already logs anything worth a WARN, so this stays at DEBUG rather than
+        // filling the log with normal client behaviour.
+        log.debug("{} on {} {}: {}", ex.getStatus().value(), request.getMethod(),
+                request.getRequestURI(), ex.getMessage());
         return build(ex.getStatus(), ex.getMessage(), request);
     }
 

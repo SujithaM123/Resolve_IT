@@ -18,6 +18,7 @@ says **Not implemented** instead of guessing.
 | Repositories | 7 |
 | Oracle tables | 7 |
 | DTO records | 35, in 23 files — 23 top-level, 12 nested inside the single response that uses them |
+| Classes with a logger | 8 (SLF4J; no logging dependency added) |
 | Automated tests | **None** — there is no `src/test/` directory; the API is exercised by hand through Swagger UI |
 
 ---
@@ -2848,6 +2849,201 @@ Covered in Feature 13. The one-line version:
 
 ---
 
+## 18. Application logging
+
+### What application logging is
+
+Logging is the application writing a short line about something it just did, so that a
+human can read afterwards what happened. It is the application's own diary.
+
+This is **not** user login. "Log in" is a user proving who they are; "logging" is the
+program recording events. They are unrelated words that happen to look alike, and the
+evaluator may well ask you to separate them.
+
+A line from an actual run of this project:
+
+```
+2026-09-03T21:39:51.774+05:30  INFO 9692 --- [resolveit-backend] [nio-8080-exec-2]
+c.d.intern.demo.service.IncidentService  : Incident INC-1041 created by user 41 on team
+Payment Service with severity HIGH and priority P1
+```
+
+Reading it left to right: **when** it happened, at what **level** (INFO), the process id,
+the application name, which **thread** served the request, which **class** wrote the line,
+and then the message.
+
+### Why logging is useful
+
+Once the application is running, you cannot see inside it. Without logs, "the incident was
+never assigned" is a mystery. With them you can see exactly what the application decided:
+
+```
+WARN  c.d.intern.demo.service.AssignmentService : No eligible SUPPORT engineer for team 4;
+                                                  incident stays unassigned
+```
+
+That single line answers the question. Logs are also the only record left after the request
+is over — the HTTP response is gone, but the log line stays.
+
+### Why SLF4J
+
+Spring Boot already includes SLF4J plus Logback, so **no dependency was added** for logging.
+
+SLF4J is an *interface*, not a logging engine. Code calls `org.slf4j.Logger`, and whichever
+engine is on the classpath (Logback here) actually writes the line. If the engine were ever
+swapped, not one line of this project would change.
+
+Every logger in this project is declared the same way:
+
+```java
+private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+```
+
+`static final` because one logger per class is enough — it does not belong to an instance.
+Passing `AuthService.class` is what puts the class name in the output, which is how you know
+which class wrote a line.
+
+Note the `{}` placeholders used everywhere in this project:
+
+```java
+log.info("Incident {} resolved by engineer {}", saved.getIncidentCode(), caller.getUserId());
+```
+
+This is preferred over string concatenation because the message is only assembled if the
+line is actually going to be written. At INFO level a `log.debug(...)` call costs almost
+nothing, because its message is never built.
+
+### INFO vs WARN vs ERROR
+
+| Level | Means | Example from this project |
+|---|---|---|
+| `ERROR` | Something failed that should not have | `log.error("Unexpected error handling {} {}", method, uri, ex)` in `GlobalExceptionHandler` |
+| `WARN` | Not a crash, but worth noticing | `log.warn("Login failed for email {}", request.email())` in `AuthService` |
+| `INFO` | A normal, important business event | `log.info("Incident {} status changed from {} to {} by engineer {}", ...)` in `SupportService` |
+| `DEBUG` | Detail useful only while developing | the 4xx line in `GlobalExceptionHandler` |
+
+The rule this project follows: **a failed login is WARN, not ERROR.** One user mistyping a
+password is normal life for a web application — it is worth noticing, but nothing is broken.
+ERROR is reserved for the unexpected, which is why only `GlobalExceptionHandler` uses it,
+and it is the only place that passes the exception object so the stack trace is printed.
+
+`application.properties` sets the level for this project's own code:
+
+```properties
+logging.level.com.dtcc.intern.demo=INFO
+```
+
+INFO and above are shown; DEBUG is hidden until you ask for it.
+
+### Where logging exists in this project
+
+Eight classes have a logger. Business events are logged in the **service** layer, not in
+controllers — the controller only moves HTTP around, while the service is where the
+business operation actually happens.
+
+| Class | What it logs |
+|---|---|
+| `AuthService` | registration, SUPPORT account creation, duplicate email (WARN), failed login (WARN), successful login, logout |
+| `IncidentService` | incident created, incident auto-assigned with its score, could-not-assign (WARN) |
+| `SupportService` | status transition, resolution, rejected invalid transition (WARN), OpsAI action requested |
+| `IncidentMessageService` | message sent, messages marked read |
+| `AssignmentService` | no engineer on the team / none eligible (WARN) |
+| `DeterministicOpsAiService` | how many similar incidents were found, root-cause confidence |
+| `StompAuthChannelInterceptor` | WebSocket connect and subscribe, and every rejection (WARN) |
+| `GlobalExceptionHandler` | unexpected failures (ERROR, with stack trace); expected 4xx at DEBUG |
+
+Deliberately **not** logged: getters, entities, repositories, DTOs, and "entering method" /
+"exiting method" noise. A log line has to tell you something you could not already guess.
+
+### Why passwords and JWTs are never logged
+
+A log file is a plain text file. It gets copied, emailed, and pasted into tickets. Anything
+written to it should be assumed to become public.
+
+So this project never logs:
+
+- the raw password, or the BCrypt hash,
+- the JWT, or the `Authorization` header,
+- the database password or the JWT signing secret.
+
+Compare the two:
+
+```java
+log.info("Login successful for user {} ({}) with role {}",
+        user.getUserId(), user.getEmail(), user.getRole());   // identifies WHO
+
+log.info("Login successful, token {}", token);                // NEVER - hands over the account
+```
+
+The identity is enough to investigate a problem. The credential adds nothing except risk:
+anyone reading the log could paste that token into a request and *be* that user until it
+expires. The same reasoning applies to the logout line — it records the email, never the
+token id it revoked.
+
+This was verified rather than assumed. After exercising registration, login, a wrong
+password, incident creation, messaging, OpsAI and WebSocket against the running
+application, the produced log was searched for the test passwords, the issued JWT, any
+BCrypt hash, the database password and the JWT secret. Every count came back zero.
+
+### Logging vs debugging
+
+They answer different questions.
+
+| | Debugging | Logging |
+|---|---|---|
+| When | While you are writing the code | While the application is running for real |
+| How | Breakpoints in the IDE, stepping line by line | Lines written to the console or a file |
+| Who watches | You, right now | Anyone, afterwards |
+| Effect | Pauses the program | Does not interrupt anything |
+
+A debugger cannot help with "why did that incident fail to assign at 2am last Tuesday" —
+you were not there and the program is not paused. That is what logs are for. The two are
+complementary: logs tell you *where* the problem is, and then a debugger tells you *why*.
+
+### How to read the logs while running
+
+Run the application and the logs appear in the console:
+
+```
+mvn spring-boot:run
+```
+
+or, once packaged:
+
+```
+java -jar target/resolveit-backend-1.0.0.jar
+```
+
+Then call an endpoint and watch. Registering a user and logging in twice — once with the
+wrong password — produces exactly this:
+
+```
+INFO  c.dtcc.intern.demo.service.AuthService : Registered USER account 41 for logtest@example.com
+WARN  c.dtcc.intern.demo.service.AuthService : Login failed for email logtest@example.com
+INFO  c.dtcc.intern.demo.service.AuthService : Login successful for user 41 (logtest@example.com) with role USER
+```
+
+To see more detail from this project's own classes, lower the level in
+`application.properties`:
+
+```properties
+logging.level.com.dtcc.intern.demo=DEBUG
+```
+
+That reveals the DEBUG line `GlobalExceptionHandler` writes for expected 4xx responses,
+which is useful when a request returns 400 or 409 and you want to know why.
+
+To keep the logs in a file as well as on screen, Spring Boot needs only one property — no
+Logback XML file is required:
+
+```properties
+logging.file.name=logs/resolveit.log
+```
+
+This project leaves that off, because the console is enough while developing.
+
+---
+
 # PART 5 — DATABASE UNDERSTANDING
 
 ## The 7 tables
@@ -3349,6 +3545,40 @@ I test the APIs manually through Swagger UI."
 rules, the priority mapping, the assignment scoring, and that registration always produces
 the USER role.
 
+**Q: How does your application do logging?**
+**ANSWER:** "With SLF4J, which Spring Boot already provides — I added no dependency. Each
+class that needs it declares `private static final Logger log =
+LoggerFactory.getLogger(ThatClass.class);` and logs important business events at INFO, things
+worth noticing at WARN, and unexpected failures at ERROR."
+**DEEPER:** The logging lives in the service layer, not the controllers, because that is
+where the business operation actually happens. Eight classes have a logger. `application.properties`
+sets `logging.level.com.dtcc.intern.demo=INFO`; everything else is Spring Boot's default
+console format, with no Logback XML.
+
+**Q: Why is a failed login WARN and not ERROR?**
+**ANSWER:** "Because nothing is broken. A user mistyping a password is normal behaviour for
+a web application — worth noticing, but not a failure of my system. ERROR is for the
+unexpected."
+**DEEPER:** That is why the only ERROR in the project is in `GlobalExceptionHandler`'s
+catch-all, and it is the only call that passes the exception object, so a stack trace is
+printed. Expected 4xx responses are logged at DEBUG there, so normal client mistakes do not
+fill the log with false alarms.
+
+**Q: Do you log the password or the JWT?**
+**ANSWER:** "Never. A log file is plain text that gets copied and pasted into tickets — if
+the token were in it, anyone reading the log could use it and *be* that user until it
+expires. I log the user id and email, which is enough to investigate, and never the
+credential."
+**DEEPER:** Also never the BCrypt hash, the `Authorization` header, the database password or
+the JWT secret. Even the logout line records the email rather than the token id it revoked.
+
+**Q: What is the difference between logging and debugging?**
+**ANSWER:** "A debugger is for while I am writing the code — I pause the program and step
+through it. Logging is for when the application is running for real, where nobody is
+watching and I cannot pause anything. Logs are the record I read afterwards."
+**DEEPER:** They work together: the log tells me *where* the problem is, then a debugger
+tells me *why*.
+
 ---
 
 # PART 8 — "EXPLAIN THIS FILE TO THE EVALUATOR"
@@ -3710,6 +3940,22 @@ result. **Read-only.**
 Business code throws `ApiException` subclass → `GlobalExceptionHandler` → `ApiErrorResponse`
 JSON. Security failures before the controller → `RestAuthenticationEntryPoint` (401) /
 `RestAccessDeniedHandler` (403). Unknown URL → 404. Anything else → logged, safe 500.
+
+
+## Logging
+
+SLF4J (`org.slf4j.Logger`), already provided by Spring Boot - no dependency added, no
+Logback XML. Eight classes hold a `private static final Logger log`, all in the service
+layer plus `StompAuthChannelInterceptor` and `GlobalExceptionHandler`.
+
+INFO for normal business events (registration, login, incident created, incident assigned,
+status changed, message sent, OpsAI action). WARN for expected-but-notable (failed login,
+duplicate email, invalid status transition, unassignable incident, rejected WebSocket
+frame). ERROR only in `GlobalExceptionHandler`'s catch-all, which is the only place a stack
+trace is printed. Expected 4xx go to DEBUG so they do not read as failures.
+
+**Never logged:** password, BCrypt hash, JWT, `Authorization` header, database password,
+JWT secret. Level set by `logging.level.com.dtcc.intern.demo=INFO`.
 
 ## Status codes at a glance
 
